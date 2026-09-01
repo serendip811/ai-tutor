@@ -37,6 +37,7 @@ export async function POST(request: Request) {
           model: MODEL,
           instructions: SIHA_AGENT_INSTRUCTIONS,
           output_modalities: ["audio"],
+          reasoning: { effort: "low" },
           audio: {
             input: {
               transcription: {
