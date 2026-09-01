@@ -41,7 +41,6 @@ export async function POST(request: Request) {
             input: {
               transcription: {
                 model: "gpt-4o-mini-transcribe",
-                language: "ko",
                 prompt: "A Korean child mixing very easy Korean and English words.",
               },
               turn_detection: {
