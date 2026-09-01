@@ -25,6 +25,8 @@ type TranscriptTurn = {
 
 const SESSION_MS = 5 * 60 * 1000;
 const MAX_EVENTS = 40;
+const UNCERTAIN_TRANSCRIPT = /[\u0400-\u04ff\u3040-\u30ff]/;
+const SHORT_FILLER = /^(?:아+|어+|음+|으음+|m+h+m+)[.!… ]*$/i;
 
 function now() {
   return performance.now();
@@ -40,6 +42,10 @@ export function VoiceTutor() {
   const speechStoppedRef = useRef<number | null>(null);
   const firstAudioSeenRef = useRef(false);
   const directorStateRef = useRef<DirectorState>(INITIAL_DIRECTOR_STATE);
+  const responseActiveRef = useRef(false);
+  const queuedTranscriptRef = useRef<string | null>(null);
+  const uncertainTranscriptRef = useRef<string | null>(null);
+  const uncertainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +66,9 @@ export function VoiceTutor() {
 
   const stop = useCallback((reason = "manual") => {
     if (endTimerRef.current) clearTimeout(endTimerRef.current);
+    if (uncertainTimerRef.current) clearTimeout(uncertainTimerRef.current);
     endTimerRef.current = null;
+    uncertainTimerRef.current = null;
     sessionRef.current?.close();
     sessionRef.current = null;
     startedAtRef.current = null;
@@ -81,8 +89,36 @@ export function VoiceTutor() {
 
   useEffect(() => () => {
     if (endTimerRef.current) clearTimeout(endTimerRef.current);
+    if (uncertainTimerRef.current) clearTimeout(uncertainTimerRef.current);
     sessionRef.current?.close();
   }, []);
+
+  const requestDirectedResponse = useCallback((childTranscript: string) => {
+    const session = sessionRef.current;
+    if (!session) return;
+
+    if (responseActiveRef.current) {
+      queuedTranscriptRef.current = childTranscript;
+      session.interrupt();
+      addEvent("TURN_QUEUED");
+      return;
+    }
+
+    const direction = directChildTurn(
+      directorStateRef.current,
+      childTranscript,
+    );
+    directorStateRef.current = direction.state;
+    session.transport.updateSessionConfig({
+      instructions: `${SIHA_AGENT_INSTRUCTIONS}\n\nLIVE SESSION DIRECTOR\n${direction.instructions}`,
+      audio: {
+        output: { voice: "marin", speed: direction.speed },
+      },
+    });
+    addEvent("DIRECTOR", `${direction.mode} / ${direction.speed}x`);
+    responseActiveRef.current = true;
+    session.transport.requestResponse?.();
+  }, [addEvent]);
 
   const handleTransportEvent = useCallback((event: unknown) => {
     if (!event || typeof event !== "object") return;
@@ -132,34 +168,47 @@ export function VoiceTutor() {
         ]);
       }
 
-      const session = sessionRef.current;
-      if (session) {
-        const direction = directChildTurn(
-          directorStateRef.current,
-          transcript ?? "",
-        );
-        directorStateRef.current = direction.state;
-        session.transport.updateSessionConfig({
-          instructions: `${SIHA_AGENT_INSTRUCTIONS}\n\nLIVE SESSION DIRECTOR\n${direction.instructions}`,
-          audio: {
-            output: { voice: "marin", speed: direction.speed },
-          },
-        });
-        addEvent("DIRECTOR", `${direction.mode} / ${direction.speed}x`);
-        session.transport.requestResponse?.();
+      const text = transcript?.trim() ?? "";
+      if (!text) {
+        addEvent("TURN_IGNORED", "empty_transcript");
+        return;
       }
+
+      const practicePending =
+        directorStateRef.current.pendingPracticePhrase !== null;
+      const uncertain = UNCERTAIN_TRANSCRIPT.test(text);
+      const filler = SHORT_FILLER.test(text);
+
+      if (!practicePending && (uncertain || filler || uncertainTranscriptRef.current)) {
+        if (uncertainTranscriptRef.current && !uncertain && !filler) {
+          uncertainTranscriptRef.current = null;
+          if (uncertainTimerRef.current) clearTimeout(uncertainTimerRef.current);
+          uncertainTimerRef.current = null;
+          requestDirectedResponse(text);
+          return;
+        }
+
+        uncertainTranscriptRef.current = [uncertainTranscriptRef.current, text]
+          .filter(Boolean)
+          .join(" ");
+        if (uncertainTimerRef.current) clearTimeout(uncertainTimerRef.current);
+        uncertainTimerRef.current = setTimeout(() => {
+          const pending = uncertainTranscriptRef.current ?? "";
+          uncertainTranscriptRef.current = null;
+          uncertainTimerRef.current = null;
+          requestDirectedResponse(pending);
+        }, 650);
+        addEvent("TURN_DEBOUNCED", uncertain ? "uncertain" : "filler");
+        return;
+      }
+
+      requestDirectedResponse(text);
       return;
     }
 
     if (type === "conversation.item.input_audio_transcription.failed") {
-      const session = sessionRef.current;
-      if (session) {
-        session.transport.updateSessionConfig({
-          instructions: `${SIHA_AGENT_INSTRUCTIONS}\n\nLIVE SESSION DIRECTOR\nThe child's last audio could not be transcribed. Do not guess. In Korean, ask her to say it one more time. Ask nothing else.`,
-        });
-        addEvent("DIRECTOR", "transcription_failed");
-        session.transport.requestResponse?.();
-      }
+      addEvent("TRANSCRIPTION_FAILED");
+      requestDirectedResponse("");
       return;
     }
 
@@ -182,15 +231,21 @@ export function VoiceTutor() {
     }
 
     if (type === "response.done") {
+      responseActiveRef.current = false;
       setStatus("listening");
       addEvent("RESPONSE_DONE");
+      const queuedTranscript = queuedTranscriptRef.current;
+      if (queuedTranscript !== null) {
+        queuedTranscriptRef.current = null;
+        queueMicrotask(() => requestDirectedResponse(queuedTranscript));
+      }
       return;
     }
 
     if (type === "error") {
       addEvent("REALTIME_ERROR");
     }
-  }, [addEvent]);
+  }, [addEvent, requestDirectedResponse]);
 
   const start = useCallback(async () => {
     if (sessionRef.current || status === "connecting") return;
@@ -202,6 +257,11 @@ export function VoiceTutor() {
     setCopyState("idle");
     setDebugCopyState("idle");
     directorStateRef.current = INITIAL_DIRECTOR_STATE;
+    responseActiveRef.current = false;
+    queuedTranscriptRef.current = null;
+    uncertainTranscriptRef.current = null;
+    if (uncertainTimerRef.current) clearTimeout(uncertainTimerRef.current);
+    uncertainTimerRef.current = null;
 
     try {
       const tokenResponse = await fetch("/api/realtime/session", {
@@ -228,6 +288,7 @@ export function VoiceTutor() {
         transport: "webrtc",
         config: {
           outputModalities: ["audio"],
+          reasoning: { effort: "low" },
           audio: {
             input: {
               transcription: {
@@ -267,6 +328,7 @@ export function VoiceTutor() {
       session.sendMessage(
         "Start now. Greet Siha naturally in Korean, say briefly that you are her English playmate, and ask in Korean what she wants to talk about today. Tell her she may answer in Korean. Do not start with a quiz or an animal choice.",
       );
+      responseActiveRef.current = true;
     } catch (caught) {
       console.error(caught);
       sessionRef.current?.close();
