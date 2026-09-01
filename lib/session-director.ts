@@ -3,6 +3,8 @@ export type DirectorState = {
   consecutiveAssistantQuestions: number;
   assistantTurnsWithoutEnglish: number;
   pendingPracticePhrase: string | null;
+  pendingChildQuestion: string | null;
+  recentChildTranscripts: string[];
   slowSpeech: boolean;
 };
 
@@ -11,10 +13,12 @@ export const INITIAL_DIRECTOR_STATE: DirectorState = {
   consecutiveAssistantQuestions: 0,
   assistantTurnsWithoutEnglish: 0,
   pendingPracticePhrase: null,
+  pendingChildQuestion: null,
+  recentChildTranscripts: [],
   slowSpeech: false,
 };
 
-const UNCERTAIN_SCRIPT = /[\u0400-\u04ff\u3040-\u30ff]/;
+const UNCERTAIN_SCRIPT = /[\u0400-\u04ff\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
 
 function practiceLooksAttempted(expected: string | null, actual: string) {
   if (!expected) return false;
@@ -47,6 +51,7 @@ export function recordAssistantTurn(
       ? 0
       : state.assistantTurnsWithoutEnglish + 1,
     pendingPracticePhrase,
+    pendingChildQuestion: null,
   };
 }
 
@@ -63,6 +68,11 @@ export function directChildTurn(
   const asksForSlowerSpeech = /말.{0,4}빠르|천천히|slow(?:er)?/i.test(text);
   const childUsedEnglish = /\b[A-Za-z]{2,}\b/.test(text);
   const sensitiveMoment = /무서|때렸|때려|아파|괴롭|비밀|도와줘|싫어 죽겠/.test(text);
+  const repairRequest = /뭐라고|뭐라|못.{0,3}알아|어려워/.test(text);
+  const childAskedQuestion =
+    !repairRequest && /[?？]|궁금|어떻게|왜|뭐야|언제|누구/.test(text);
+  const returnGreeting =
+    state.childTurnCount === 0 && /^(?:안녕|hello|hi)[?!. ]*$/i.test(text);
   const practiceWasPending = state.pendingPracticePhrase !== null;
   const refusedPractice = /싫어|안 할|안해|안 해|모르겠|몰라|no\b/i.test(text);
   const attemptedPractice = practiceLooksAttempted(
@@ -75,6 +85,10 @@ export function directChildTurn(
     pendingPracticePhrase: practiceWasPending
       ? null
       : state.pendingPracticePhrase,
+    pendingChildQuestion: childAskedQuestion
+      ? text
+      : state.pendingChildQuestion,
+    recentChildTranscripts: [...state.recentChildTranscripts, text].slice(-3),
     slowSpeech: state.slowSpeech || asksForSlowerSpeech,
   };
 
@@ -85,6 +99,10 @@ export function directChildTurn(
     "Use Korean to manage understanding, but keep this an English-learning conversation.",
     "In a normal turn, naturally echo one key part of Siha's meaning in 2 to 5 very easy English words.",
     "Do not use the phrase 'You can say' unless this is the occasional guided speaking turn.",
+    `Recent child turns are: ${JSON.stringify(nextState.recentChildTranscripts)}.`,
+    nextState.pendingChildQuestion
+      ? `An unanswered child question has priority: ${JSON.stringify(nextState.pendingChildQuestion)}.`
+      : "There is no unanswered child question.",
   ];
 
   let mode = "grounded_reply";
@@ -96,6 +114,12 @@ export function directChildTurn(
       "The transcript is unreliable. Do not guess its meaning.",
       "In Korean, say you did not hear the last part clearly and ask her to repeat it once.",
       "Do not add a content question or a multiple-choice guess.",
+    );
+  } else if (returnGreeting) {
+    mode = "return_greeting";
+    turnRules.push(
+      "Return the greeting warmly in one short sentence.",
+      "Do not introduce yourself again or repeat the full opening.",
     );
   } else if (sensitiveMoment) {
     mode = "sensitive_support";
@@ -110,11 +134,18 @@ export function directChildTurn(
       "Acknowledge in Korean that you will speak more slowly.",
       "Use one short sentence, spoken calmly, and do not ask a new question in this turn.",
     );
-  } else if (/뭐라고|뭐라|못.{0,3}알아|어려워/.test(text)) {
+  } else if (repairRequest) {
     mode = "repair_question";
     turnRules.push(
       "Briefly apologize in Korean and restate only your immediately previous question in easier Korean.",
       "Do not expand it with three choices or extra explanation.",
+    );
+  } else if (childAskedQuestion || state.pendingChildQuestion) {
+    mode = "answer_question";
+    turnRules.push(
+      `Answer the child's unanswered question directly now: ${JSON.stringify(childAskedQuestion ? text : state.pendingChildQuestion)}.`,
+      "Use age-appropriate Korean explanation with one or two tiny English examples when useful.",
+      "Do not start speaking practice, do not ask a new question, and do not focus on a later side comment until the question is answered.",
     );
   } else if (practiceWasPending && (refusedPractice || !attemptedPractice)) {
     mode = "practice_skipped";
