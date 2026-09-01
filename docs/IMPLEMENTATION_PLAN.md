@@ -5,11 +5,13 @@
 초기에는 마이크로서비스로 나누지 않고 모듈형 모놀리스로 시작한다.
 
 - Web client: Next.js + TypeScript, 모바일 PWA 우선
-- API: Next.js server 또는 별도 Node.js TypeScript API
+- Realtime: `@openai/agents/realtime`의 RealtimeAgent·RealtimeSession
+- Transport: 브라우저에서 OpenAI로 직접 WebRTC
+- API: Next.js Route Handler로 임시 세션·이벤트·리포트 처리
 - DB: PostgreSQL
 - Queue/cache: 초기에는 선택 사항, 오디오 처리 지연이 생기면 Redis 도입
 - Object storage: 암호화와 lifecycle 삭제를 지원하는 저장소
-- AI providers: STT, LLM, TTS를 adapter interface 뒤에 둠
+- AI: OpenAI Realtime speech-to-speech, 별도 STT/LLM/TTS 체인은 fallback 연구 대상으로만 둠
 - Test: Vitest/Jest + Playwright
 - Schema: Zod 또는 JSON Schema
 
@@ -31,40 +33,40 @@ tests/
   scenarios/
 ```
 
-## 3. Milestone 0 — 결정적 시뮬레이터
+## 3. Milestone 0 — Realtime vertical slice
 
 산출물:
 
-- 공용 타입과 Schema
-- `decideNextPlan()` 순수 함수
-- Response Validator
-- 3개 세션 시나리오 fixture
-- CLI 또는 간단한 웹 기반 text simulator
+- Next.js 앱과 모바일 홈·대화 화면
+- `/api/realtime/session` 임시 세션 API
+- RealtimeAgent·RealtimeSession WebRTC 연결
+- semantic VAD 설정
+- 원시 이벤트와 지연시간 개발 패널
+- 5분 자동 종료
 
 완료 조건:
 
-- 외부 STT/LLM/TTS 없이 10개 Controller 필수 테스트 통과
-- 동일 입력은 동일 plan을 생성
-- Validator 실패 시 항상 안전 템플릿 반환
+- iPhone Safari에서 양방향 음성 대화 가능
+- 일반 API 키가 브라우저 번들·응답·로그에 없음
+- end-of-turn과 first audio latency 측정 가능
+- 끼어들기와 정상 종료 동작
 
-## 4. Milestone 1 — 음성 세션 vertical slice
+## 4. Milestone 1 — 시하 전용 Agent
 
 산출물:
 
 - 부모 1명/아이 1명 로컬 프로필
-- 마이크 녹음
-- STT adapter
-- Analyzer
-- Controller
-- LLM composer + Validator
-- TTS 재생
-- Animals 주제와 `I like ___`
+- 시하 전용 instruction
+- Animals·Colors 주제와 `I like ___`
+- `show_choices`, `record_child_state`, `end_session` 도구
+- transcript와 정규화 이벤트 수집
+- `semantic_vad` low/auto 비교
 
 완료 조건:
 
 - iPhone Safari에서 5분 세션 완료
 - 발화 종료부터 응답 재생 P95 3초 이내 또는 병목 수치 확보
-- STT 실패·침묵·거절·종료 흐름 수동 검증
+- 느린 발화·한국어·혼합어·거절·종료 흐름 검증
 
 ## 5. Milestone 2 — MVP 콘텐츠와 부모 리포트
 
@@ -95,13 +97,13 @@ tests/
 
 ### P0
 
-- 도메인 타입과 JSON Schema
-- Controller 우선순위
-- 한국어/Mixed 의미 성공 처리
-- repair 1회 제한
-- stop intent 최우선
-- Validator와 fallback
-- 세션 이벤트 수집
+- 임시 Realtime 세션 API
+- WebRTC 음성 연결
+- RealtimeAgent instruction
+- semantic VAD
+- latency 이벤트 수집
+- stop intent와 5분 종료
+- API 키 및 아동 데이터 보호
 
 ### P1
 
@@ -121,7 +123,7 @@ tests/
 ## 8. 테스트 전략
 
 - Unit: Analyzer 규칙, Controller, Validator, mastery evidence
-- Contract: STT/LLM/TTS adapter의 고정 fixture
+- Contract: 임시 세션 API, 정규화 이벤트, Realtime tool schema
 - Scenario: `SESSION_SCENARIOS.md` 전체 흐름
 - Property: 어떤 입력에서도 질문 1개·repair 1회·stop 후 질문 0개
 - E2E: iOS Safari 녹음 권한, 네트워크 지연, 중복 제출
@@ -140,16 +142,15 @@ Dashboard 최소 항목:
 
 ## 10. 첫 개발 이슈 묶음
 
-1. `shared-schemas`: ConversationState와 UtteranceAnalysis
-2. `conversation-domain`: action priority resolver
-3. `conversation-domain`: difficulty/support reducer
-4. `conversation-domain`: repair policy
-5. `conversation-domain`: shadowing policy
-6. `conversation-domain`: response validator
-7. `tests/scenarios`: 3개 fixture
-8. `simulator`: text turn runner
-9. `content`: Animals topic v1
-10. `api`: session/turn endpoints skeleton
+1. Next.js 앱과 모바일 shell
+2. 임시 Realtime 세션 Route Handler
+3. RealtimeAgent·RealtimeSession 연결
+4. 시하 전용 instruction
+5. semantic VAD와 끼어들기
+6. 이벤트 정규화와 latency 패널
+7. 5분 종료 및 재연결
+8. 세션 이벤트 저장 schema
+9. Animals·Colors 콘텐츠 context
+10. 실제 iPhone 시나리오 평가
 
-첫 코드 작업은 1~8을 하나의 vertical development branch에서 완료하는 것을 권장한다.
-
+첫 코드 작업은 1~7을 하나의 vertical slice로 완료하고 실제 iPhone에서 속도를 확인한다.
