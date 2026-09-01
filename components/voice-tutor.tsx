@@ -25,7 +25,7 @@ type TranscriptTurn = {
 
 const SESSION_MS = 5 * 60 * 1000;
 const MAX_EVENTS = 40;
-const UNCERTAIN_TRANSCRIPT = /[\u0400-\u04ff\u3040-\u30ff]/;
+const UNCERTAIN_TRANSCRIPT = /[\u0400-\u04ff\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
 const SHORT_FILLER = /^(?:아+|어+|음+|으음+|m+h+m+)[.!… ]*$/i;
 
 function now() {
@@ -98,7 +98,10 @@ export function VoiceTutor() {
     if (!session) return;
 
     if (responseActiveRef.current) {
-      queuedTranscriptRef.current = childTranscript;
+      queuedTranscriptRef.current = [
+        queuedTranscriptRef.current,
+        childTranscript,
+      ].filter(Boolean).join(" ");
       session.interrupt();
       addEvent("TURN_QUEUED");
       return;
