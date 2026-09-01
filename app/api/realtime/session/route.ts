@@ -45,11 +45,11 @@ export async function POST(request: Request) {
               turn_detection: {
                 type: "semantic_vad",
                 eagerness: "low",
-                create_response: true,
+                create_response: false,
                 interrupt_response: true,
               },
             },
-            output: { voice: VOICE },
+            output: { voice: VOICE, speed: 0.9 },
           },
         },
       }),
