@@ -1,12 +1,14 @@
 export type DirectorState = {
   childTurnCount: number;
   consecutiveAssistantQuestions: number;
+  assistantTurnsWithoutEnglish: number;
   slowSpeech: boolean;
 };
 
 export const INITIAL_DIRECTOR_STATE: DirectorState = {
   childTurnCount: 0,
   consecutiveAssistantQuestions: 0,
+  assistantTurnsWithoutEnglish: 0,
   slowSpeech: false,
 };
 
@@ -17,11 +19,15 @@ export function recordAssistantTurn(
   transcript: string,
 ): DirectorState {
   const askedQuestion = transcript.includes("?");
+  const containsEnglish = /\b[A-Za-z]{2,}\b/.test(transcript);
   return {
     ...state,
     consecutiveAssistantQuestions: askedQuestion
       ? state.consecutiveAssistantQuestions + 1
       : 0,
+    assistantTurnsWithoutEnglish: containsEnglish
+      ? 0
+      : state.assistantTurnsWithoutEnglish + 1,
   };
 }
 
@@ -36,6 +42,8 @@ export function directChildTurn(
 } {
   const text = transcript.trim();
   const asksForSlowerSpeech = /말.{0,4}빠르|천천히|slow(?:er)?/i.test(text);
+  const childUsedEnglish = /\b[A-Za-z]{2,}\b/.test(text);
+  const sensitiveMoment = /무서|때렸|때려|아파|괴롭|비밀|도와줘|싫어 죽겠/.test(text);
   const nextState: DirectorState = {
     ...state,
     childTurnCount: state.childTurnCount + 1,
@@ -46,8 +54,9 @@ export function directChildTurn(
     `The latest child transcript is: ${JSON.stringify(text)}.`,
     "Respond to this exact meaning before adding anything.",
     "Do not introduce a new object, activity, setting, or topic from one loosely related word.",
-    "Do not teach or model an English phrase unless Siha explicitly asks for help.",
-    "Use Korean for managing the conversation and very easy English only when it naturally fits the content.",
+    "Use Korean to manage understanding, but keep this an English-learning conversation.",
+    "In a normal turn, naturally echo one key part of Siha's meaning in 2 to 5 very easy English words.",
+    "Do not use the phrase 'You can say' unless this is the occasional guided speaking turn.",
   ];
 
   let mode = "grounded_reply";
@@ -59,6 +68,13 @@ export function directChildTurn(
       "The transcript is unreliable. Do not guess its meaning.",
       "In Korean, say you did not hear the last part clearly and ask her to repeat it once.",
       "Do not add a content question or a multiple-choice guess.",
+    );
+  } else if (sensitiveMoment) {
+    mode = "sensitive_support";
+    turnRules.push(
+      "This is a sensitive moment. Respond mainly in calm Korean and do not turn it into an English exercise.",
+      "Reflect only what Siha actually said. Do not intensify it, judge anyone, take sides, or repeatedly investigate.",
+      "Ask at most one simple safety clarification if needed. Encourage telling a nearby trusted adult if she may be unsafe.",
     );
   } else if (asksForSlowerSpeech) {
     mode = "slow_down";
@@ -90,6 +106,26 @@ export function directChildTurn(
       "First reflect one concrete detail Siha just gave.",
       "Prefer a natural reaction over manufacturing another question.",
       "If a follow-up is genuinely useful, ask at most one short grounded question, preferably in Korean.",
+    );
+
+    const guidedEnglishTurn =
+      !childUsedEnglish && nextState.childTurnCount % 4 === 0;
+    if (guidedEnglishTurn) {
+      mode = "guided_english";
+      turnRules.push(
+        "After responding to her meaning, invite exactly one 2-to-5-word English phrase derived from what she just said.",
+        "Make it optional and natural. Do not correct or ask again if she declines.",
+      );
+    } else if (childUsedEnglish) {
+      turnRules.push(
+        "Siha used English. Celebrate the meaning naturally and continue; do not ask her to repeat it.",
+      );
+    }
+  }
+
+  if (!sensitiveMoment && state.assistantTurnsWithoutEnglish >= 1) {
+    turnRules.push(
+      "The previous assistant turn had no English. This normal response must include one tiny English echo tied to Siha's meaning.",
     );
   }
 
