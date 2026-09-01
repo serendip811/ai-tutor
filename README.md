@@ -37,3 +37,25 @@
 ## 구현 시작 기준
 
 개발자는 먼저 iPhone 브라우저와 OpenAI Realtime 사이의 WebRTC vertical slice를 구현하고, 실제 발화 종료부터 응답 음성 시작까지의 지연을 계측해야 합니다. 이후 실제 세션 로그에서 반복되는 문제만 Session Director 규칙과 도구로 보완합니다.
+
+## 현재 구현
+
+- Next.js 16 모바일 웹
+- OpenAI Agents SDK RealtimeAgent·RealtimeSession
+- 브라우저 WebRTC 음성 입출력
+- 서버 전용 Realtime 임시 토큰 발급
+- 시하 전용 영어친구 instruction
+- semantic VAD `low`
+- 5분 세션과 수동 종료
+- 발화·응답 이벤트 및 latency 개발 패널
+
+## 로컬 실행
+
+```bash
+cp .env.example .env.local
+# .env.local의 OPENAI_API_KEY 설정
+npm install
+npm run dev
+```
+
+실기기 테스트는 HTTPS로 배포한 주소에서 진행합니다. Vercel 환경변수에 `OPENAI_API_KEY`를 설정하고 GitHub 저장소를 연결하면 됩니다.
