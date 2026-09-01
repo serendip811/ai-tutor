@@ -3,6 +3,12 @@
 import { RealtimeAgent, RealtimeSession } from "@openai/agents/realtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SIHA_AGENT_INSTRUCTIONS } from "@/lib/siha-agent";
+import {
+  directChildTurn,
+  INITIAL_DIRECTOR_STATE,
+  recordAssistantTurn,
+  type DirectorState,
+} from "@/lib/session-director";
 
 type Status = "idle" | "connecting" | "listening" | "speaking" | "error";
 
@@ -33,6 +39,7 @@ export function VoiceTutor() {
   const endTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechStoppedRef = useRef<number | null>(null);
   const firstAudioSeenRef = useRef(false);
+  const directorStateRef = useRef<DirectorState>(INITIAL_DIRECTOR_STATE);
 
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +118,7 @@ export function VoiceTutor() {
       return;
     }
 
-    if (type.includes("transcription.completed")) {
+    if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript =
         typeof realtimeEvent.transcript === "string"
           ? realtimeEvent.transcript
@@ -122,6 +129,35 @@ export function VoiceTutor() {
           ...current,
           { role: "시하", text: transcript.trim() },
         ]);
+      }
+
+      const session = sessionRef.current;
+      if (session) {
+        const direction = directChildTurn(
+          directorStateRef.current,
+          transcript ?? "",
+        );
+        directorStateRef.current = direction.state;
+        session.transport.updateSessionConfig({
+          instructions: `${SIHA_AGENT_INSTRUCTIONS}\n\nLIVE SESSION DIRECTOR\n${direction.instructions}`,
+          audio: {
+            output: { voice: "marin", speed: direction.speed },
+          },
+        });
+        addEvent("DIRECTOR", `${direction.mode} / ${direction.speed}x`);
+        session.transport.requestResponse?.();
+      }
+      return;
+    }
+
+    if (type === "conversation.item.input_audio_transcription.failed") {
+      const session = sessionRef.current;
+      if (session) {
+        session.transport.updateSessionConfig({
+          instructions: `${SIHA_AGENT_INSTRUCTIONS}\n\nLIVE SESSION DIRECTOR\nThe child's last audio could not be transcribed. Do not guess. In Korean, ask her to say it one more time. Ask nothing else.`,
+        });
+        addEvent("DIRECTOR", "transcription_failed");
+        session.transport.requestResponse?.();
       }
       return;
     }
@@ -136,6 +172,10 @@ export function VoiceTutor() {
           ...current,
           { role: "AI", text: assistantTranscript },
         ]);
+        directorStateRef.current = recordAssistantTurn(
+          directorStateRef.current,
+          assistantTranscript,
+        );
       }
       return;
     }
@@ -159,6 +199,7 @@ export function VoiceTutor() {
     setEvents([]);
     setTranscript([]);
     setCopyState("idle");
+    directorStateRef.current = INITIAL_DIRECTOR_STATE;
 
     try {
       const tokenResponse = await fetch("/api/realtime/session", {
@@ -193,11 +234,11 @@ export function VoiceTutor() {
               turnDetection: {
                 type: "semantic_vad",
                 eagerness: "low",
-                createResponse: true,
+                createResponse: false,
                 interruptResponse: true,
               },
             },
-            output: { voice: "marin" },
+            output: { voice: "marin", speed: 0.9 },
           },
         },
       });
