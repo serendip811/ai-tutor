@@ -16,6 +16,15 @@ export const INITIAL_DIRECTOR_STATE: DirectorState = {
 
 const UNCERTAIN_SCRIPT = /[\u0400-\u04ff\u3040-\u30ff]/;
 
+function practiceLooksAttempted(expected: string | null, actual: string) {
+  if (!expected) return false;
+  const expectedWords: string[] = expected.toLowerCase().match(/[a-z]+/g) ?? [];
+  const actualWords: string[] = actual.toLowerCase().match(/[a-z]+/g) ?? [];
+  const hasMatchingWord = actualWords.some((word) => expectedWords.includes(word));
+  const koreanPhoneticAttempt = (actual.match(/[가-힣]/g) ?? []).length >= 4;
+  return hasMatchingWord || koreanPhoneticAttempt;
+}
+
 export function recordAssistantTurn(
   state: DirectorState,
   transcript: string,
@@ -56,6 +65,10 @@ export function directChildTurn(
   const sensitiveMoment = /무서|때렸|때려|아파|괴롭|비밀|도와줘|싫어 죽겠/.test(text);
   const practiceWasPending = state.pendingPracticePhrase !== null;
   const refusedPractice = /싫어|안 할|안해|안 해|모르겠|몰라|no\b/i.test(text);
+  const attemptedPractice = practiceLooksAttempted(
+    state.pendingPracticePhrase,
+    text,
+  );
   const nextState: DirectorState = {
     ...state,
     childTurnCount: state.childTurnCount + 1,
@@ -103,13 +116,13 @@ export function directChildTurn(
       "Briefly apologize in Korean and restate only your immediately previous question in easier Korean.",
       "Do not expand it with three choices or extra explanation.",
     );
-  } else if (practiceWasPending && refusedPractice) {
+  } else if (practiceWasPending && (refusedPractice || !attemptedPractice)) {
     mode = "practice_skipped";
     turnRules.push(
-      "Siha declined the speaking practice. Say '괜찮아!' warmly and continue the previous topic.",
+      "Siha did not attempt the requested phrase. Say '괜찮아, 듣기만 해도 돼!' warmly and continue the previous topic.",
       "Do not ask her to repeat and do not offer another practice phrase now.",
     );
-  } else if (practiceWasPending && text && !UNCERTAIN_SCRIPT.test(text)) {
+  } else if (practiceWasPending && attemptedPractice) {
     mode = "practice_completed";
     turnRules.push(
       `Siha attempted the practice phrase ${JSON.stringify(state.pendingPracticePhrase)}.`,
