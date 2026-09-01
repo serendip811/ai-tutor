@@ -189,7 +189,7 @@ export function VoiceTutor() {
             input: {
               transcription: {
                 model: "gpt-4o-mini-transcribe",
-                language: "ko",
+                prompt: "A Korean child naturally mixing Korean and beginner English.",
               },
               turnDetection: {
                 type: "semantic_vad",
@@ -223,7 +223,7 @@ export function VoiceTutor() {
       }, SESSION_MS);
 
       session.sendMessage(
-        "Start now. Greet Siha by name and ask one very easy question.",
+        "Start now. Greet Siha naturally in Korean, say briefly that you are her English playmate, and ask in Korean what she wants to talk about today. Tell her she may answer in Korean. Do not start with a quiz or an animal choice.",
       );
     } catch (caught) {
       console.error(caught);
