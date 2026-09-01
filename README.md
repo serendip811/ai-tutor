@@ -4,11 +4,11 @@
 
 ## 제품 원칙
 
-> 시스템이 지금 해야 할 대화 행동을 결정하고, LLM은 허용된 범위에서 그 행동을 자연스럽게 표현한다.
+> OpenAI Realtime이 자연스러운 음성 대화를 주도하고, 우리 시스템은 세션 목표·아이 상태·안전·기록을 관리한다.
 
 - 새 영어를 많이 가르치기보다 이미 아는 영어를 말하게 한다.
 - 아이의 한국어 답변은 실패가 아니라 이해 여부를 보여주는 정보다.
-- 한 번의 실패 뒤에는 더 쉬운 선택지로 대화를 살린다.
+- 한 번의 실패 뒤에는 더 쉬운 선택지로 대화를 살리도록 Realtime Agent를 지시한다.
 - 점수보다 아이의 발화, 자발적 사용, 부담 없는 지속을 측정한다.
 - 아이가 영어로 말하면 캐릭터와 화면 세계가 의미 있게 반응한다.
 
@@ -29,10 +29,11 @@
 - 주제 5개: Animals, Colors, Food, Toys, Today
 - 목표 패턴 5개: `I like ___`, `It's ___`, `I want ___`, `Yes, I do`, `No, I don't`
 - 한국어 힌트, 그림 선택지, 단답 확장
-- 듣기·말하기·지원 수준의 독립 조정
+- OpenAI Realtime speech-to-speech와 WebRTC 직접 연결
+- semantic VAD 기반 느린 아동 발화 지원
+- Session Director 기반 목표·상태·안전 관리
 - 부모용 세션 리포트 및 선택적 대화 기록
 
 ## 구현 시작 기준
 
-개발자는 먼저 `CONVERSATION_ENGINE.md`와 `API_AND_AI_CONTRACTS.md`의 순수 함수형 Controller를 구현하고, 녹음·STT·LLM을 붙이기 전에 시나리오 기반 자동 테스트를 통과시켜야 합니다.
-
+개발자는 먼저 iPhone 브라우저와 OpenAI Realtime 사이의 WebRTC vertical slice를 구현하고, 실제 발화 종료부터 응답 음성 시작까지의 지연을 계측해야 합니다. 이후 실제 세션 로그에서 반복되는 문제만 Session Director 규칙과 도구로 보완합니다.
