@@ -1,12 +1,12 @@
 # 8분 세션 시나리오 3개
 
-각 시나리오는 구현 시 end-to-end fixture로 사용한다. 문장은 예시이며 실제 composer 출력은 Validator 범위 안에서 달라질 수 있다.
+각 시나리오는 구현 시 end-to-end 평가 대화로 사용한다. 문장은 정답 fixture가 아니라 기대 행동이며 Realtime Agent의 실제 표현은 달라질 수 있다.
 
 ## 시나리오 A — 반응이 좋은 날
 
 목표: `I like ___`, `It's ___`; Animals → Colors.
 
-| 시각 | AI | Child | Analyzer/Controller |
+| 시각 | AI | Child | 기대 관찰 |
 |---:|---|---|---|
 | 0:00 | Hi, Siha! Are you happy? | Yes. | MATCH, ASK_YES_NO |
 | 0:20 | Yay! Cat or dog? | Cat. | SINGLE_WORD, RESPOND |
@@ -25,7 +25,7 @@
 | 7:20 | Cats, pink, cookies! Fun! | 웃음/Yes | wrap-up 준비 |
 | 7:45 | That was fun! Bye, Siha! | Bye! | ENDED |
 
-검증 포인트: 5분 연장, 단답과 문장 균형, 화면 반응, Pattern A 재사용.
+검증 포인트: 5분 연장, 단답과 문장 균형, 화면 반응, Pattern A 재사용, 응답 latency.
 
 ## 시나리오 B — 이해가 어려운 날
 
@@ -68,20 +68,17 @@
 
 검증 포인트: `Forever! Cool!` 금지, repair 최대 1회, 거절 후 5턴 내 shadow 금지, stop 최우선.
 
-## 자동 테스트 fixture 요건
+## 평가 레코드 요건
 
 각 행은 다음을 포함한다.
 
 ```json
 {
-  "inputState": {},
-  "stt": { "text": "forever", "confidence": 0.42 },
-  "analysis": {},
-  "expectedPlan": {
-    "coreAction": "REPAIR_CONFIRM",
-    "reasonCodes": ["STT_LOW_CONFIDENCE", "SEMANTIC_MISMATCH"]
-  },
+  "scenario": "uncertain_child_speech",
+  "transcript": "forever",
+  "expectedBehavior": ["ASK_ONCE", "DO_NOT_PRETEND_UNDERSTANDING"],
   "forbiddenOutputPatterns": ["Forever!", "Cool!"]
 }
 ```
 
+평가는 문구 완전 일치가 아니라 행동 기준으로 수행한다. 음성 세션마다 false interruption, perceived latency, instruction violation도 함께 기록한다.
