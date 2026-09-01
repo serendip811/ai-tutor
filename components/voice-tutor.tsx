@@ -189,7 +189,6 @@ export function VoiceTutor() {
             input: {
               transcription: {
                 model: "gpt-4o-mini-transcribe",
-                prompt: "A Korean child naturally mixing Korean and beginner English.",
               },
               turnDetection: {
                 type: "semantic_vad",
