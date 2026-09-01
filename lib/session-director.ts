@@ -5,6 +5,7 @@ export type DirectorState = {
   pendingPracticePhrase: string | null;
   pendingChildQuestion: string | null;
   recentChildTranscripts: string[];
+  topicEstablished: boolean;
   slowSpeech: boolean;
 };
 
@@ -15,6 +16,7 @@ export const INITIAL_DIRECTOR_STATE: DirectorState = {
   pendingPracticePhrase: null,
   pendingChildQuestion: null,
   recentChildTranscripts: [],
+  topicEstablished: false,
   slowSpeech: false,
 };
 
@@ -73,6 +75,10 @@ export function directChildTurn(
     !repairRequest && /[?？]|궁금|어떻게|왜|뭐야|언제|누구/.test(text);
   const returnGreeting =
     state.childTurnCount === 0 && /^(?:안녕|hello|hi)[?!. ]*$/i.test(text);
+  const doesNotEstablishTopic =
+    returnGreeting ||
+    repairRequest ||
+    /모르겠|몰라|글쎄/.test(text);
   const practiceWasPending = state.pendingPracticePhrase !== null;
   const refusedPractice = /싫어|안 할|안해|안 해|모르겠|몰라|no\b/i.test(text);
   const attemptedPractice = practiceLooksAttempted(
@@ -89,6 +95,9 @@ export function directChildTurn(
       ? text
       : state.pendingChildQuestion,
     recentChildTranscripts: [...state.recentChildTranscripts, text].slice(-3),
+    topicEstablished:
+      state.topicEstablished ||
+      (!doesNotEstablishTopic && !UNCERTAIN_SCRIPT.test(text)),
     slowSpeech: state.slowSpeech || asksForSlowerSpeech,
   };
 
@@ -161,7 +170,21 @@ export function directChildTurn(
       "If needed, say the natural phrase once in your own response, but never ask for another repetition.",
       "Then continue the topic from the phrase's meaning with a short reaction, not a quiz.",
     );
-  } else if (/모르겠|몰라/.test(text)) {
+  } else if (/모르겠|몰라|글쎄/.test(text) && !state.topicEstablished) {
+    mode = "lead_topic";
+    const starterIndex = state.childTurnCount % 3;
+    const topicStarter = [
+      "a favorite animation or character",
+      "one fun or surprising thing from kindergarten today",
+      "a playful imagination such as having one magic power",
+    ][starterIndex];
+    turnRules.push(
+      "Siha does not know what topic to choose. Take the lead confidently instead of asking the same broad question again.",
+      `Start this one concrete topic now: ${topicStarter}.`,
+      "Use a warm Korean lead-in and one very easy English phrase. Ask only one concrete, easy question.",
+      "Do not list many categories and do not default to cats or dogs.",
+    );
+  } else if (/모르겠|몰라|글쎄/.test(text)) {
     mode = "accept_unknown";
     turnRules.push(
       "Warmly accept that she does not know.",
