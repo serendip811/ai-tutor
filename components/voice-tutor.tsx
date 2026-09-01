@@ -49,6 +49,7 @@ export function VoiceTutor() {
   const [elapsed, setElapsed] = useState(0);
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [debugCopyState, setDebugCopyState] = useState<"idle" | "copied" | "error">("idle");
   const startedAtRef = useRef<number | null>(null);
 
   const addEvent = useCallback((type: string, detail?: string) => {
@@ -199,6 +200,7 @@ export function VoiceTutor() {
     setEvents([]);
     setTranscript([]);
     setCopyState("idle");
+    setDebugCopyState("idle");
     directorStateRef.current = INITIAL_DIRECTOR_STATE;
 
     try {
@@ -293,6 +295,19 @@ export function VoiceTutor() {
       setCopyState("error");
     }
   }, [transcript]);
+
+  const copyDebugLog = useCallback(async () => {
+    const text = [...events]
+      .reverse()
+      .map((event) => `${event.type}${event.detail ? `\n${event.detail}` : ""}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setDebugCopyState("copied");
+    } catch {
+      setDebugCopyState("error");
+    }
+  }, [events]);
 
   const characterClass = [
     "character",
@@ -389,10 +404,17 @@ export function VoiceTutor() {
 
         {showDebug && (
           <aside className="debugPanel">
+            <div className="debugHeader">
+              <strong>개발 로그</strong>
+              <button className="debugCopyButton" onClick={copyDebugLog}>
+                {debugCopyState === "copied" ? "복사됨!" : "전체 복사"}
+              </button>
+            </div>
             <div className="metric">
               <span>최근 응답 속도</span>
               <strong>{formatSeconds(latencyMs)}</strong>
             </div>
+            {debugCopyState === "error" && <p>복사하지 못했어요.</p>}
             <div className="metric">
               <span>VAD</span>
               <strong>semantic / low</strong>
