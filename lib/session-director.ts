@@ -2,6 +2,7 @@ export type DirectorState = {
   childTurnCount: number;
   consecutiveAssistantQuestions: number;
   assistantTurnsWithoutEnglish: number;
+  pendingPracticePhrase: string | null;
   slowSpeech: boolean;
 };
 
@@ -9,6 +10,7 @@ export const INITIAL_DIRECTOR_STATE: DirectorState = {
   childTurnCount: 0,
   consecutiveAssistantQuestions: 0,
   assistantTurnsWithoutEnglish: 0,
+  pendingPracticePhrase: null,
   slowSpeech: false,
 };
 
@@ -20,6 +22,13 @@ export function recordAssistantTurn(
 ): DirectorState {
   const askedQuestion = transcript.includes("?");
   const containsEnglish = /\b[A-Za-z]{2,}\b/.test(transcript);
+  const practiceMatch = transcript.match(
+    /(?:이렇게 말해보자|따라 해볼까)[^"“]*["“]([^"”]+)["”]/,
+  );
+  const pendingPracticePhrase =
+    practiceMatch?.[1] && /[A-Za-z]/.test(practiceMatch[1])
+      ? practiceMatch[1].trim()
+      : state.pendingPracticePhrase;
   return {
     ...state,
     consecutiveAssistantQuestions: askedQuestion
@@ -28,6 +37,7 @@ export function recordAssistantTurn(
     assistantTurnsWithoutEnglish: containsEnglish
       ? 0
       : state.assistantTurnsWithoutEnglish + 1,
+    pendingPracticePhrase,
   };
 }
 
@@ -44,9 +54,14 @@ export function directChildTurn(
   const asksForSlowerSpeech = /말.{0,4}빠르|천천히|slow(?:er)?/i.test(text);
   const childUsedEnglish = /\b[A-Za-z]{2,}\b/.test(text);
   const sensitiveMoment = /무서|때렸|때려|아파|괴롭|비밀|도와줘|싫어 죽겠/.test(text);
+  const practiceWasPending = state.pendingPracticePhrase !== null;
+  const refusedPractice = /싫어|안 할|안해|안 해|모르겠|몰라|no\b/i.test(text);
   const nextState: DirectorState = {
     ...state,
     childTurnCount: state.childTurnCount + 1,
+    pendingPracticePhrase: practiceWasPending
+      ? null
+      : state.pendingPracticePhrase,
     slowSpeech: state.slowSpeech || asksForSlowerSpeech,
   };
 
@@ -88,6 +103,20 @@ export function directChildTurn(
       "Briefly apologize in Korean and restate only your immediately previous question in easier Korean.",
       "Do not expand it with three choices or extra explanation.",
     );
+  } else if (practiceWasPending && refusedPractice) {
+    mode = "practice_skipped";
+    turnRules.push(
+      "Siha declined the speaking practice. Say '괜찮아!' warmly and continue the previous topic.",
+      "Do not ask her to repeat and do not offer another practice phrase now.",
+    );
+  } else if (practiceWasPending && text && !UNCERTAIN_SCRIPT.test(text)) {
+    mode = "practice_completed";
+    turnRules.push(
+      `Siha attempted the practice phrase ${JSON.stringify(state.pendingPracticePhrase)}.`,
+      "Praise the attempt briefly and specifically. Do not score pronunciation or grammar.",
+      "If needed, say the natural phrase once in your own response, but never ask for another repetition.",
+      "Then continue the topic from the phrase's meaning with a short reaction, not a quiz.",
+    );
   } else if (/모르겠|몰라/.test(text)) {
     mode = "accept_unknown";
     turnRules.push(
@@ -113,8 +142,9 @@ export function directChildTurn(
     if (guidedEnglishTurn) {
       mode = "guided_english";
       turnRules.push(
-        "After responding to her meaning, invite exactly one 2-to-5-word English phrase derived from what she just said.",
-        "Make it optional and natural. Do not correct or ask again if she declines.",
+        "After responding to her meaning, choose exactly one 2-to-5-word English phrase derived from what she just said.",
+        "Invite one clear repetition in Korean using this exact format: 이렇게 말해보자: “ENGLISH PHRASE”",
+        "Say the English phrase slowly once, then stop and wait. Do not add another question in this turn.",
       );
     } else if (childUsedEnglish) {
       turnRules.push(
