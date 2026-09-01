@@ -1,4 +1,4 @@
-# MVP 구현 계획 v1.0
+# MVP 구현 계획 v2.0
 
 ## 1. 권장 기술 구조
 
@@ -24,9 +24,9 @@ apps/
   web/
   api/
 packages/
-  conversation-domain/
+  session-director/
   content/
-  ai-adapters/
+  realtime/
   shared-schemas/
 docs/
 tests/
