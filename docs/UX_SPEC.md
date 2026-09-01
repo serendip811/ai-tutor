@@ -8,6 +8,7 @@
 - 터치 선택지는 항상 2개 이하, 큰 이미지와 음성 레이블을 사용한다.
 - 마이크 상태를 색만으로 표현하지 않는다.
 - 아이의 영어가 화면을 의미 있게 바꿔야 한다.
+- AI 음성을 아이가 끊고 말할 수 있어야 하며, 끼어들기 상태를 시각적으로 보여준다.
 
 ## 2. Home
 
@@ -120,3 +121,18 @@
 - 네트워크 오류 시 `친구가 잠깐 쉬고 있어. 다음에 또 만나자!`처럼 짧게 종료
 - 로딩 중 아이 음성을 중복 제출하지 않도록 UI 잠금
 
+## 11. 개발용 Realtime 패널
+
+운영 아이 화면에서는 숨기고 개발 모드에서만 제공한다.
+
+- WebRTC connection state
+- speech started/stopped
+- transcript final
+- response created
+- first audio delta
+- playback started
+- perceived latency
+- VAD mode
+- tool call과 오류
+
+시하 실제 테스트 화면 녹화와 동일 타임라인으로 비교할 수 있게 이벤트를 다운로드할 수 있어야 한다.
