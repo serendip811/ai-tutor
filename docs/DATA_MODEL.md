@@ -66,6 +66,8 @@ erDiagram
 | target_patterns | text[] | 최대 2개 |
 | topics | text[] | 사용 주제 |
 | state_json | jsonb | 복구용 현재 상태 |
+| realtime_call_id_enc | bytea nullable | sideband 연결용 call id, 단기 보관 |
+| vad_mode | text | SEMANTIC_LOW, SEMANTIC_AUTO 등 |
 | state_version | integer | 동시성 제어 |
 | started_at | timestamptz | 시작 |
 | ended_at | timestamptz nullable | 종료 |
@@ -87,6 +89,9 @@ erDiagram
 | action_type | text nullable | assistant action |
 | reason_codes | text[] | 판정 이유 |
 | latency_ms | integer nullable | 처리 지연 |
+| first_audio_latency_ms | integer nullable | 발화 종료부터 첫 audio delta |
+| playback_latency_ms | integer nullable | 발화 종료부터 실제 재생 |
+| interrupted | boolean | 끼어들기 발생 여부 |
 | created_at | timestamptz | 생성 시각 |
 
 `unique(session_id, sequence_no)`와 `unique(session_id, client_turn_id)`를 둔다.
@@ -127,6 +132,10 @@ PK는 `(child_id, word_key)`다.
 
 집계 결과와 생성 버전을 저장한다. 원본 turn에서 재생성 가능해야 하며 부모 표시 문구는 단정 대신 `도움 없이 사용한 것으로 감지`처럼 confidence를 반영한다.
 
+### session_events
+
+정규화된 Realtime·클라이언트 이벤트를 저장한다. `event_id`, `session_id`, `turn_id`, `name`, `occurred_at`, `monotonic_ms`, `payload_json`, `schema_version`을 가지며 원본 오디오를 포함하지 않는다.
+
 ## 3. 데이터 보존
 
 - 동의 없는 원본 음성: STT 처리 직후 또는 최대 24시간 이내 삭제
@@ -142,4 +151,3 @@ PK는 `(child_id, word_key)`다.
 - 오래된 증거는 confidence를 감쇠
 - STT 또는 분석 confidence가 낮은 증거는 프로필에 반영하지 않거나 낮은 가중치 적용
 - 부정적 증거 한 번으로 known 상태를 즉시 내리지 않음
-
