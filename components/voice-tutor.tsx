@@ -12,6 +12,11 @@ type DebugEvent = {
   detail?: string;
 };
 
+type TranscriptTurn = {
+  role: "AI" | "시하";
+  text: string;
+};
+
 const SESSION_MS = 5 * 60 * 1000;
 const MAX_EVENTS = 40;
 
@@ -35,6 +40,8 @@ export function VoiceTutor() {
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const startedAtRef = useRef<number | null>(null);
 
   const addEvent = useCallback((type: string, detail?: string) => {
@@ -110,6 +117,26 @@ export function VoiceTutor() {
           ? realtimeEvent.transcript
           : undefined;
       addEvent("TRANSCRIPT", transcript);
+      if (transcript?.trim()) {
+        setTranscript((current) => [
+          ...current,
+          { role: "시하", text: transcript.trim() },
+        ]);
+      }
+      return;
+    }
+
+    if (type === "response.output_audio_transcript.done") {
+      const assistantTranscript =
+        typeof realtimeEvent.transcript === "string"
+          ? realtimeEvent.transcript.trim()
+          : "";
+      if (assistantTranscript) {
+        setTranscript((current) => [
+          ...current,
+          { role: "AI", text: assistantTranscript },
+        ]);
+      }
       return;
     }
 
@@ -130,6 +157,8 @@ export function VoiceTutor() {
     setError(null);
     setLatencyMs(null);
     setEvents([]);
+    setTranscript([]);
+    setCopyState("idle");
 
     try {
       const tokenResponse = await fetch("/api/realtime/session", {
@@ -213,6 +242,18 @@ export function VoiceTutor() {
     [elapsed],
   );
 
+  const copyTranscript = useCallback(async () => {
+    const text = transcript
+      .map((turn) => `${turn.role}: ${turn.text}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
+  }, [transcript]);
+
   const characterClass = [
     "character",
     status === "speaking" ? "characterSpeaking" : "",
@@ -272,6 +313,31 @@ export function VoiceTutor() {
             처음 한 번 마이크 사용을 허용해 주세요.
           </p>
         </div>
+
+        {status === "idle" && transcript.length > 0 && (
+          <section className="transcriptPanel">
+            <div className="transcriptHeader">
+              <div>
+                <p className="transcriptEyebrow">오늘의 대화</p>
+                <h2>대화 로그</h2>
+              </div>
+              <button className="copyButton" onClick={copyTranscript}>
+                {copyState === "copied" ? "복사됨!" : "전체 복사"}
+              </button>
+            </div>
+            {copyState === "error" && (
+              <p className="copyError">복사하지 못했어요. 다시 눌러주세요.</p>
+            )}
+            <div className="transcriptList">
+              {transcript.map((turn, index) => (
+                <p className={`transcriptTurn transcript${turn.role}`} key={`${turn.role}-${index}`}>
+                  <strong>{turn.role}</strong>
+                  <span>{turn.text}</span>
+                </p>
+              ))}
+            </div>
+          </section>
+        )}
 
         <button
           className="debugToggle"
